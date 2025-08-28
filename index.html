@@ -140,6 +140,36 @@
             word-wrap: break-word;
         }
 
+        /* File attachment styling */
+        .file-attachment {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-attachment .file-icon {
+            font-size: 1.2rem;
+        }
+
+        .file-attachment .file-info {
+            flex: 1;
+        }
+
+        .file-attachment .file-name {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .file-attachment .file-size {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
         /* Markdown styling */
         .message-text h1, 
         .message-text h2, 
@@ -370,6 +400,36 @@
             color: var(--text-secondary);
         }
 
+        .attachment-button {
+            padding: 16px;
+            background: var(--card-bg);
+            color: var(--accent);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            backdrop-filter: blur(10px);
+        }
+
+        .attachment-button:hover:not(:disabled) {
+            background: var(--accent);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+
+        .attachment-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .send-button {
             padding: 16px 20px;
             background: var(--accent);
@@ -396,6 +456,60 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .selected-file-display {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--accent);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .selected-file-display.show {
+            display: flex;
+        }
+
+        .selected-file-info {
+            flex: 1;
+        }
+
+        .selected-file-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .selected-file-size {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .remove-file-button {
+            background: rgba(255, 107, 157, 0.2);
+            color: #ff6b9d;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .remove-file-button:hover {
+            background: #ff6b9d;
+            color: white;
         }
 
         .error-message {
@@ -479,6 +593,12 @@
             .send-button {
                 padding: 14px 16px;
             }
+
+            .attachment-button {
+                width: 48px;
+                height: 48px;
+                padding: 14px;
+            }
         }
 
         /* Scrollbar styling */
@@ -541,7 +661,30 @@
         </div>
 
         <div class="input-container">
+            <div class="selected-file-display" id="selectedFileDisplay">
+                <div class="selected-file-info">
+                    <div class="selected-file-name" id="selectedFileName"></div>
+                    <div class="selected-file-size" id="selectedFileSize"></div>
+                </div>
+                <button class="remove-file-button" onclick="removeFile()">×</button>
+            </div>
+            
             <div class="input-wrapper">
+                <input 
+                    type="file" 
+                    class="file-input" 
+                    id="fileInput"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+                    onchange="handleFileSelect(event)"
+                />
+                <button 
+                    class="attachment-button" 
+                    id="attachmentButton" 
+                    onclick="document.getElementById('fileInput').click()"
+                    title="Attach file"
+                >
+                    📎
+                </button>
                 <textarea 
                     class="message-input" 
                     id="messageInput" 
@@ -559,6 +702,25 @@
     <script>
         const API_URL = 'https://fin-n8n-preworkshop.app.n8n.cloud/webhook/chat_financial';
         let isWaiting = false;
+        let sessionId = null;
+        let selectedFile = null;
+
+        // Initialize session ID
+        function initializeSession() {
+            sessionId = sessionStorage.getItem("fin_session_id");
+            if (!sessionId) {
+                if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                    sessionId = crypto.randomUUID();
+                } else {
+                    sessionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                        const r = Math.random() * 16 | 0;
+                        const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    });
+                }
+                sessionStorage.setItem("fin_session_id", sessionId);
+            }
+        }
 
         // Configure marked for better formatting
         marked.setOptions({
@@ -569,8 +731,12 @@
         const chatContainer = document.getElementById('chatContainer');
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
+        const attachmentButton = document.getElementById('attachmentButton');
         const typingIndicator = document.getElementById('typingIndicator');
         const welcomeMessage = document.getElementById('welcomeMessage');
+        const selectedFileDisplay = document.getElementById('selectedFileDisplay');
+        const selectedFileName = document.getElementById('selectedFileName');
+        const selectedFileSize = document.getElementById('selectedFileSize');
 
         // Auto-resize textarea
         messageInput.addEventListener('input', function() {
@@ -582,11 +748,73 @@
         messageInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                if (!isWaiting && this.value.trim()) {
+                if (!isWaiting && (this.value.trim() || selectedFile)) {
                     sendMessage();
                 }
             }
         });
+
+        // File handling functions
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                // Check file size (max 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('File size must be less than 10MB');
+                    event.target.value = '';
+                    return;
+                }
+                
+                selectedFile = file;
+                displaySelectedFile(file);
+            }
+        }
+
+        function displaySelectedFile(file) {
+            selectedFileName.textContent = file.name;
+            selectedFileSize.textContent = formatFileSize(file.size);
+            selectedFileDisplay.classList.add('show');
+        }
+
+        function removeFile() {
+            selectedFile = null;
+            selectedFileDisplay.classList.remove('show');
+            document.getElementById('fileInput').value = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function getFileIcon(fileName) {
+            const extension = fileName.split('.').pop().toLowerCase();
+            const icons = {
+                'pdf': '📄',
+                'doc': '📝', 'docx': '📝',
+                'xls': '📊', 'xlsx': '📊',
+                'csv': '📋',
+                'txt': '📄',
+                'png': '🖼️', 'jpg': '🖼️', 'jpeg': '🖼️',
+            };
+            return icons[extension] || '📎';
+        }
+
+        async function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // Remove the data URL prefix (data:type/subtype;base64,)
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
 
         function sendExampleQuestion(question) {
             messageInput.value = question;
@@ -595,15 +823,16 @@
 
         async function sendMessage() {
             const message = messageInput.value.trim();
-            if (!message || isWaiting) return;
+            if (!message && !selectedFile) return;
+            if (isWaiting) return;
 
             // Hide welcome message on first interaction
             if (welcomeMessage) {
                 welcomeMessage.style.display = 'none';
             }
 
-            // Add user message
-            addMessage(message, 'user');
+            // Add user message with file attachment if present
+            addMessage(message, 'user', selectedFile);
             
             // Clear input
             messageInput.value = '';
@@ -614,16 +843,32 @@
             
             isWaiting = true;
             sendButton.disabled = true;
+            attachmentButton.disabled = true;
 
             try {
+                // Prepare request body
+                const requestBody = {
+                    chatInput: message,
+                    session_id: sessionId
+                };
+
+                // Add file data if present
+                if (selectedFile) {
+                    const fileBase64 = await fileToBase64(selectedFile);
+                    requestBody.attachment = {
+                        fileName: selectedFile.name,
+                        fileType: selectedFile.type,
+                        fileSize: selectedFile.size,
+                        fileData: fileBase64
+                    };
+                }
+
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        chatInput: message
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 if (!response.ok) {
@@ -655,15 +900,21 @@
                     errorMessage = 'Server sedang mengalami masalah. Silakan coba lagi nanti.';
                 }
                 
-                addMessage(errorMessage, 'bot', true);
+                addMessage(errorMessage, 'bot', null, true);
+            }
+
+            // Clear selected file after sending
+            if (selectedFile) {
+                removeFile();
             }
 
             isWaiting = false;
             sendButton.disabled = false;
+            attachmentButton.disabled = false;
             messageInput.focus();
         }
 
-        function addMessage(text, sender, isError = false) {
+        function addMessage(text, sender, attachedFile = null, isError = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
             
@@ -689,6 +940,21 @@
             }
             
             contentDiv.appendChild(textDiv);
+
+            // Add file attachment display for user messages
+            if (attachedFile && sender === 'user') {
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'file-attachment';
+                fileDiv.innerHTML = `
+                    <span class="file-icon">${getFileIcon(attachedFile.name)}</span>
+                    <div class="file-info">
+                        <div class="file-name">${attachedFile.name}</div>
+                        <div class="file-size">${formatFileSize(attachedFile.size)}</div>
+                    </div>
+                `;
+                contentDiv.appendChild(fileDiv);
+            }
+            
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(contentDiv);
             
@@ -768,8 +1034,9 @@
             typingIndicator.classList.remove('show');
         }
 
-        // Focus input on load
+        // Initialize session and focus input on load
         window.addEventListener('load', () => {
+            initializeSession();
             messageInput.focus();
         });
 
